@@ -22,22 +22,9 @@ set(SYSL_TARGET aarch64-android)
 set(SYSL_ARCHIVE ${CMAKE_CURRENT_BINARY_DIR}/libsyslui.a)
 set(SYSL_PROGRAM ${CMAKE_CURRENT_SOURCE_DIR}/../../../../syslui-android)
 
-# **syslUI is reached by path rather than by coordinate, because the repository is private.** There
-# is nothing for `sysl build` to fetch, so a clone of `sysl-lang/syslui` has to sit beside this one
-# and `--lib` points at it. Everything else the program uses — SDL3 and PlutoVG — is an ordinary
-# coordinate in `package.hocon` and arrives on its own.
-set(SYSLUI_LIB ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../syslui)
-
-if(NOT EXISTS ${SYSLUI_LIB}/package.hocon)
-    message(FATAL_ERROR "syslUI is not at ${SYSLUI_LIB} — clone sysl-lang/syslui beside this repository")
-endif()
-
-# **The toolkit's own sources are dependencies of the archive, and leaving them out is silent.** A
-# `--lib` tree is compiled into this program like any other module, so editing one and rebuilding
-# produced an APK with the old toolkit in it and no output at all to say so. A glob is re-run at
-# configure time rather than at build time, which is the ordinary caveat and the right trade here:
-# the alternative is naming eighteen files that change as the package grows.
-file(GLOB_RECURSE SYSLUI_SOURCES ${SYSLUI_LIB}/sh/sysl/ui/*.sysl)
+# **syslUI and its SDL driver are coordinates, so there is nothing to point at.** Both repositories
+# are public and `package.hocon` names them; `sysl build-c` fetches them like any other dependency,
+# and this file is one `--lib` and one `file(GLOB)` shorter than it was while the toolkit was private.
 
 # Where SDL's headers and its `.so` actually are, asked of the imported targets rather than written
 # down. `sh.sysl.sdl3` reads SDL's own headers for its constants instead of transcribing them, so the
@@ -82,11 +69,10 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E env ANDROID_NDK_ROOT=${ANDROID_NDK}
             sysl build-c ${SYSL_PROGRAM}
             --target ${SYSL_TARGET}
-            --lib ${SYSLUI_LIB}
             --include-path sdl3=${SDL3_INCLUDE_DIR}
             --link-path ${SDL3_LIB_DIR}
             -o ${SYSL_ARCHIVE}
-    DEPENDS ${SYSL_PROGRAM}/main.sysl ${SYSL_PROGRAM}/package.hocon ${SYSLUI_SOURCES}
+    DEPENDS ${SYSL_PROGRAM}/main.sysl ${SYSL_PROGRAM}/package.hocon
     COMMENT "Compiling the syslUI demo for ${SYSL_TARGET}"
     VERBATIM)
 

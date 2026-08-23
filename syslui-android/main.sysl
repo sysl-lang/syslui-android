@@ -1,77 +1,49 @@
 // syslUI on Android: a form, a keyboard, and a phone's own scale.
 //
-// **The whole program is one exported function, and the interesting thing about it is its name.**
-// Android has no `main`. `SDLActivity` loads `libmain.so` and looks up the symbol `SDL_main` in it,
-// so what an Android program needs is not an entry point that runs first but one the Java half can
-// find -- and `@export` publishes exactly that. There is no C in this repository at all.
+// **Two exports and a screen, and that is the whole program.** The window, the frame loop, the event
+// pump, the density, the texture upload and the system font are `sh.sysl.ui_sdl`'s -- the same
+// driver the desktop demo runs, because the measurement said seventeen lines of a hundred and twenty
+// were genuinely about being on a phone. What is left here is the two things that cannot be in a
+// library and the interface itself.
 //
-// **The toolkit needed nothing added to run here**, which is the claim this demo exists to make. A
-// tap is a mouse event, because SDL synthesises them from touch; typed text is a `TextInput`, which
-// is what the on-screen keyboard produces; and the three things that *are* different on a phone --
-// the density, the system bars and the keyboard being something you ask for -- are all the
-// application's, which is where syslUI leaves them on purpose.
+// **`SDL_main` rather than `main`.** Android has no `main`: `SDLActivity` loads `libmain.so` and
+// looks up the symbol `SDL_main` in it, so what an Android program needs is an entry point the Java
+// half can find rather than one that runs first. `@export` publishes exactly that, which is why
+// there is no C in this repository at all.
 //
-// **What is not here is any notion of a phone inside the toolkit.** `sh.sysl.ui` has no scale
-// factor, no orientation and no insets. This file supplies all three, in about thirty lines, and
-// that is the argument for the split: a toolkit that had guessed at them would have to be told it
-// was wrong on every device that disagreed.
+// **And the JNI method that reports the system bars**, whose symbol is mangled from *this*
+// application's package name and so could never live in a library.
 
 import sh.sysl.ui.*
-import sh.sysl.plutovg
-import sh.sysl.sdl3.{Renderer, Texture, Window, PixelFormat, TextureAccess, init, create_window,
-                     poll_event, Event, EventKind, ticks_ns, error, set_hint, INIT_VIDEO,
-                     WINDOW_RESIZABLE, KMOD_SHIFT, KMOD_CTRL, KMOD_ALT, SCANCODE_BACKSPACE,
-                     SCANCODE_DELETE, SCANCODE_LEFT, SCANCODE_RIGHT, SCANCODE_UP, SCANCODE_DOWN,
-                     SCANCODE_HOME, SCANCODE_END, SCANCODE_RETURN, SCANCODE_TAB}
-import sysl.fs.is_file
+import sh.sysl.ui_sdl.{app, run, set_insets}
 import sysl.seq.{Sequence, generate}
-import sysl.slices.as_ptr
 
-// What the window is asked for, which on Android is only a hint about which way up to start:
-// SDL reads the requested shape, and wider-than-tall turns a phone sideways.
-const WANTED_W: i32 = 400
-const WANTED_H: i32 = 800
+// What the window is asked for. On Android this decides only which way up the activity starts: SDL
+// reads the requested shape, and wider-than-tall turns a phone sideways.
+const WANTED_W: int = 400
+const WANTED_H: int = 800
 
-// The text size in *points*, not pixels. Everything below is laid out in points and the canvas is
-// scaled by the display's own factor, so this is 15 pixels on a laptop and 41 on a phone.
-const SIZE: f32 = 15.0
-
-// How many rows the list holds. Enough to need the scrollbar, few enough to fit in a phone's memory
-// without thinking about it.
+// How many rows the list holds -- enough to need the scrollbar.
 const ROWS: int = 120
 
 // Which field is which, to the keyboard. **They must differ and neither may be `NOBODY`**: two
-// fields sharing an id would take each other's keys.
+// fields sharing an id would take each other's keys, and the failure looks like typing into the
+// wrong box rather than like a missing argument.
 const NAME_FIELD: int = 1
 const NOTES_FIELD: int = 2
 
-// ## The bars, which SDL will not tell you about on their own
-//
-// **`window.safe_area()` is not the rectangle a drawing wants.** SDL builds Android's safe area out
-// of five inset types at once, because it answers *where can a button go* -- on a gesture-navigation
-// phone that is 78 pixels off each side for the back-gesture strips. What an interface wants is the
-// window minus the **system bars** and nothing else, and SDL exposes only the combined rectangle, so
-// the Java half reads the insets and hands them over here.
-//
-// **They are written on the UI thread and read on SDL's**, deliberately without a lock: four
-// independent `i32` stores are the one shape where a lock buys nothing worth having, and the worst a
-// reader sees is one frame laid out against a mix of old and new values, on the frame the phone was
-// turned.
-var bar_left: i32 = 0
-var bar_top: i32 = 0
-var bar_right: i32 = 0
-var bar_bottom: i32 = 0
-
 // **A JNI entry point, defined in sysl.** JNI resolves an `external fun` by mangling its package and
 // class into `Java_<package>_<Class>_<method>`, so this string is what `MainActivity`'s
-// `nativeSetSystemBars` binds to. (`self` is a reserved word, hence `instance`.)
+// `nativeSetSystemBars` binds to -- and why it belongs to the application rather than to the driver.
+// (`self` is a reserved word, hence `instance`.)
+//
+// **What it reports is the window minus the *system bars* and nothing else.** SDL's own
+// `safe_area()` is built from five inset types at once because it answers *where can a button go*,
+// which on a gesture-navigation phone is 78 pixels off each side -- too conservative for a drawing,
+// where nothing is touchable and the sides are perfectly visible.
 @export("Java_sh_sysl_syslui_MainActivity_nativeSetSystemBars")
-set_system_bars(env: *u8, instance: *u8, l: i32, t: i32, r: i32, b: i32)
-    bar_left = l
-    bar_top = t
-    bar_right = r
-    bar_bottom = b
-end set_system_bars
+set_system_bars(env: *u8, instance: *u8, l: i32, t: i32, r: i32, b: i32) =
+    set_insets(int(l), int(t), int(r), int(b))
 
 // ## The application
 //
@@ -108,9 +80,9 @@ rows_of(n: int) -> [][]string =
 
 // The whole screen, rebuilt from scratch whenever anything is written.
 //
-// **Nothing here knows it is on a phone.** It is the same tree the desktop demo builds, and the
-// three things that differ -- the scale, the insets and the keyboard -- are handled in `sdl_main`
-// below without a view being told about any of them.
+// **Nothing here knows it is on a phone**, and the point of this repository is that the claim is
+// true rather than aspirational: it is the same shape of tree the desktop demo builds, and the three
+// things that differ -- the scale, the insets and the on-screen keyboard -- are the driver's.
 screen(m: &Model, rows: [][]string) -> &View
     val look = if m.daylight.read() then light() else dark()
 
@@ -163,189 +135,12 @@ end screen
 // What the window is cleared to, which is the application's colour rather than the toolkit's.
 window_ground(m: &Model) -> u32 = if m.daylight.read() then 0xF7F8FA else 0x12141C
 
-// ## The three things a phone does differently
-
-// A font the device already has.
-//
-// **PlutoVG rasterizes glyphs itself and needs a file**, so this is where an Android program differs
-// from a desktop one in a way that cannot be papered over: there is no fontconfig, and the paths are
-// conventions rather than an API. Every Android since 4.0 has Roboto at the first of these.
-font_path() -> string
-    if is_file("/system/fonts/Roboto-Regular.ttf") then return "/system/fonts/Roboto-Regular.ttf"
-    if is_file("/system/fonts/NotoSans-Regular.ttf") then return "/system/fonts/NotoSans-Regular.ttf"
-    if is_file("/system/fonts/DroidSans.ttf") then return "/system/fonts/DroidSans.ttf"
-
-    ""
-end font_path
-
-// SDL's key events, as the toolkit's. **Only the keys an editing surface cares about are mapped**,
-// and typed text is not among them: it arrives as `TextInput`, already composed, which is the only
-// way an accent, a CJK composition or a phone's autocomplete ever reaches a field.
-private key_of(sc: i32) -> Option[Key] =
-    sc match
-        SCANCODE_BACKSPACE -> Some(Key.Backspace)
-        SCANCODE_DELETE -> Some(Key.Delete)
-        SCANCODE_LEFT -> Some(Key.Left)
-        SCANCODE_RIGHT -> Some(Key.Right)
-        SCANCODE_UP -> Some(Key.Up)
-        SCANCODE_DOWN -> Some(Key.Down)
-        SCANCODE_HOME -> Some(Key.Home)
-        SCANCODE_END -> Some(Key.End)
-        SCANCODE_RETURN -> Some(Key.Enter)
-        SCANCODE_TAB -> Some(Key.Tab)
-        _ -> None
-
-private by_word(mods: u16) -> bool = (mods & (KMOD_CTRL | KMOD_ALT)) != 0u16
-
 @export("SDL_main")
 sdl_main(argc: i32, argv: **u8) -> i32
-    // **Set before `init`, because a hint is read when the thing it configures is created**, and on
-    // Android the activity's orientation is decided during startup. The hint alone is not enough:
-    // `SDLActivity.setOrientationBis` only promotes "both allowed" to *follow the device* when the
-    // window is resizable, so the two together are what make it `FULL_USER`.
-    set_hint("SDL_ORIENTATIONS", "Portrait PortraitUpsideDown LandscapeLeft LandscapeRight")
-
-    if !init(INIT_VIDEO) then return 1
-
-    val path = font_path()
-
-    if path == "" then return 2
-
-    val window = create_window("syslUI", WANTED_W, WANTED_H, WINDOW_RESIZABLE).expect("a window")
-    val renderer = window.create_renderer().expect("a renderer")
-
-    renderer.set_vsync(true)
-
-    val face = plutovg.font(path).expect("the system font opened")
     val m = model()
     val rows = rows_of(ROWS)
 
-    // The surface, the canvas and the texture are all the size of the window in **pixels**, and all
-    // three are rebuilt when that changes -- which on a phone means when it is turned.
-    var have_w = 0
-    var have_h = 0
-    var surf = plutovg.surface(1, 1).expect("a drawing surface")
-    var vg = plutovg.canvas(surf).expect("a drawing canvas")
-    var tex = renderer.create_texture(PixelFormat.Argb8888, TextureAccess.Streaming, i32(1),
-                                      i32(1)).expect("a streaming texture")
-    var c = pluto_canvas(vg, face, SIZE)
-
-    var tree = screen(m, rows)
-    var seen = writes() - 1
-    var running = true
-    var mx = 0
-    var my = 0
-    var down = false
-    var focused = NOBODY
-    var last = ticks_ns()
-
-    while running
-        val (pw, ph) = window.size_in_pixels()
-        val (ww, wh) = window.size()
-
-        // **How many pixels a point is, which is the whole of what a phone changes about layout.**
-        // The tree is built and measured in points; the canvas is scaled by this before anything is
-        // drawn, so glyphs are rasterized at the real pixel size rather than magnified afterwards.
-        // A laptop answers 1.0 or 2.0 here and a phone about 2.75.
-        var k = window.display_scale()
-
-        if k < 1.0 then k = 1.0
-
-        if int(pw) != have_w || int(ph) != have_h
-            surf = plutovg.surface(int(pw), int(ph)).expect("a drawing surface")
-            vg = plutovg.canvas(surf).expect("a drawing canvas")
-            tex = renderer.create_texture(PixelFormat.Argb8888, TextureAccess.Streaming, pw, ph)
-                          .expect("a streaming texture")
-            c = pluto_canvas(vg, face, SIZE)
-            have_w = int(pw)
-            have_h = int(ph)
-            focused = NOBODY
-
-        // Where a touch lands, in points. **SDL reports the pointer in window units and draws in
-        // pixels**, and on a high-density display those are not the same -- so the ratio is measured
-        // rather than assumed, and then divided by the scale the interface is laid out in.
-        val to_point = if ww > 0i32 then real(pw) / real(ww) / real(k) else 1.0 / real(k)
-
-        loop
-            poll_event() match
-                Some(e) ->
-                    val kind = e.kind()
-
-                    if kind == EventKind.Quit then running = false
-
-                    // **Typed text arrives already composed**, which is why a field takes a run
-                    // rather than a character: a phone's suggestion bar inserts whole words.
-                    elif kind == EventKind.TextInput
-                        c.key(typed(e.text()))
-                    elif kind == EventKind.KeyDown
-                        key_of(e.key_scancode()) match
-                            Some(kk) ->
-                                c.key(Press(kk, (e.key_mod() & KMOD_SHIFT) != 0u16,
-                                            by_word(e.key_mod())))
-                            None -> ()
-
-                    // **A tap is a mouse button on Android**, because SDL synthesises mouse events
-                    // from touch unless told otherwise. That is why this program needs no finger
-                    // handling at all and runs unchanged on a desktop.
-                    elif kind == EventKind.MouseButtonDown
-                        mx = int(real(e.mouse_x()) * to_point)
-                        my = int(real(e.mouse_y()) * to_point)
-                        down = true
-
-                        c.point(mx, my, true)
-                        c.taps.tap(mx, my)
-                    elif kind == EventKind.MouseMotion
-                        mx = int(real(e.mouse_x()) * to_point)
-                        my = int(real(e.mouse_y()) * to_point)
-                    elif kind == EventKind.MouseButtonUp
-                        down = false
-                None -> break
-
-        // **The on-screen keyboard is asked for and dismissed by focus**, which is the one place a
-        // phone needs the toolkit to answer a question rather than the other way round. `c.focus()`
-        // is the id of whichever field has the keys, and `NOBODY` is nobody -- so a tap on a field
-        // raises the keyboard and a tap anywhere else puts it away, with no view involved in either.
-        if c.focus() != focused
-            focused = c.focus()
-
-            if focused == NOBODY then window.stop_text_input() else window.start_text_input()
-
-        val now = ticks_ns()
-        var dt = real(now - last) / 1.0e9
-
-        if dt > 0.25 then dt = 0.25
-
-        last = now
-
-        if writes() != seen
-            tree = screen(m, rows)
-            seen = writes()
-
-        c.point(mx, my, down)
-        c.tick(dt)
-        c.taps.reset()
-
-        val bg = window_ground(m)
-
-        surf.clear(fraction(bg, 16), fraction(bg, 8), fraction(bg, 0))
-
-        // **The scale is set on the canvas rather than applied to the layout**, so a rounded corner
-        // and a glyph are both rasterized at the pixel size they end up. Scaling the finished
-        // picture instead would be one bilinear blur over the whole interface.
-        vg.reset_transform()
-        vg.scale(k, k)
-
-        // The interface, in points, with the system bars taken off it.
-        val at = Rect(int(real(bar_left) / real(k)), int(real(bar_top) / real(k)),
-                      int((real(pw) - real(bar_left) - real(bar_right)) / real(k)),
-                      int((real(ph) - real(bar_top) - real(bar_bottom)) / real(k)))
-
-        render(tree, &c, at)
-
-        tex.update(as_ptr(surf.data()), i32(surf.stride()))
-        renderer.clear()
-        renderer.copy(tex)
-        renderer.present()
+    run(app("syslUI", () -> screen(m, rows), () -> window_ground(m), WANTED_W, WANTED_H))
 
     0
 end sdl_main

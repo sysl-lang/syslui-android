@@ -25,12 +25,12 @@ package {
 // a prebuilt `.so` in a package is the other half of it: SDL's AAR is 16 MB of binaries built
 // against an NDK and an API level somebody else chose, and a package hashing that into `sysl.sum`
 // would be shipping a build nobody in this org could reproduce.
-// **syslUI is not here, because it is not a coordinate.** The toolkit is a private repository, so
-// there is nothing for `sysl build` to fetch: the CMake rule passes `--lib ../syslui`, and a clone
-// of `sysl-lang/syslui` has to sit beside this one. Everything else resolves normally.
+// **Two coordinates and no `--lib`**: both repositories are public, so this builds from a fresh
+// clone with nothing sitting beside it -- and neither SDL3 nor PlutoVG is named here, because this
+// program does not reach either of them. The driver does.
 dependencies {
-  sdl3    { git = "github.com/sysl-lang/sdl3",    version = "0.3.1" }
-  plutovg { git = "github.com/sysl-lang/plutovg", version = "0.2.1" }
+  syslui     { git = "github.com/sysl-lang/syslui",     version = "0.1.0" }
+  syslui-sdl { git = "github.com/sysl-lang/syslui-sdl", version = "0.1.0" }
 }
 
 // `heap` and `posix` are what `sh.sysl.sdl3` itself requires, and a program reaching a gated module

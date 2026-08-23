@@ -34,9 +34,9 @@ Both fixes are in `sysl-lang/syslui`, and neither could have been found by a tes
 ## Building it
 
 You need Android Studio's SDK with the **NDK** and **CMake** installed (SDK Manager → SDK Tools), a
-**JDK between 17 and 25**, `ANDROID_HOME` set, and a clone of **`sysl-lang/syslui` beside this
-repository** — the toolkit is private, so it is reached by `--lib` rather than by coordinate and
-CMake stops with a message naming the path if it is not there.
+**JDK between 17 and 25**, and `ANDROID_HOME` set. Nothing has to sit beside this repository: the
+toolkit and its driver are public packages named in `syslui-android/package.hocon`, and
+`sysl build-c` fetches them.
 
 ```
 export ANDROID_HOME=~/Library/Android/sdk
@@ -52,12 +52,23 @@ adb shell am start -n sh.sysl.syslui/.MainActivity
 An emulator works and an arm64 one is required: sysl has one Android target. On an Apple Silicon
 machine the ordinary system images are arm64 already.
 
+## The whole program is two exports and a screen
+
+**146 lines, and it was 345.** The window, the frame loop, the event pump, the density, the texture
+upload and the system font are [`syslui-sdl`](https://github.com/sysl-lang/syslui-sdl)'s — the same
+driver the desktop demo runs, because the measurement said seventeen lines out of a hundred and
+twenty were genuinely about being on a phone. What is left here is the interface and the two things
+that cannot live in a library:
+
+- **`@export("SDL_main")`**, because Android looks the symbol up rather than calling `main`.
+- **the JNI method that reports the system bars**, whose symbol is mangled from *this* application's
+  package name. Four lines, and it calls the driver's `set_insets`.
+
 ## The three things a phone does differently
 
-Everything below is in `syslui-android/main.sysl`, about thirty lines of it, and **none of it is in
-the toolkit**. `sh.sysl.ui` has no scale factor, no orientation and no insets, and that is the split
-working: a toolkit that had guessed at any of them would have to be told it was wrong on every device
-that disagreed.
+All three are the driver's now, and **none of them is in the toolkit**: `sh.sysl.ui` has no scale
+factor, no orientation and no insets, which is the split working — a toolkit that had guessed at any
+of them would have to be told it was wrong on every device that disagreed.
 
 - **The density.** The tree is built and measured in *points*; the canvas is scaled by
   `window.display_scale()` before anything is drawn, so a rounded corner and a glyph are rasterized
@@ -93,7 +104,7 @@ build-c` compiles the program to an archive and CMake links it into the `libmain
 
 | file | what it does |
 |---|---|
-| `syslui-android/main.sysl` | the whole program — both exports, the screen, the frame loop |
+| `syslui-android/main.sysl` | the whole program — both exports and the screen |
 | `app/src/main/cpp/CMakeLists.txt` | runs `sysl build-c`, links the archive into `libmain.so` |
 | `activity/src/main/scala/…/MainActivity.scala` | an `SDLActivity` subclass in **Scala**, which reads the insets |
 | `activity/build.sbt` | compiles it — AGP has no Scala support, so sbt does and Gradle takes the jar |
@@ -104,10 +115,10 @@ build-c` compiles the program to an archive and CMake links it into the `libmain
 written up in that repository: `-u SDL_main` in the link options, the library being called `main`,
 `--include-path sdl3=<dir>` named rather than bare, and `ANDROID_NDK_ROOT` handed to `sysl build-c`.
 
-The fifth is this repository's own: **the toolkit's sources are dependencies of the archive.** A
-`--lib` tree is compiled into the program like any other module, so leaving it out of `DEPENDS`
-produces an APK with the old toolkit in it and nothing at all to say so — which happened here, once,
-between a fix and the build that was supposed to prove it.
+The fifth was this repository's own and is **gone with the `--lib`**: while the toolkit was reached
+by path, its sources had to be named in `DEPENDS` or the APK carried the old copy with nothing said —
+which happened here, once, between a fix and the build that was supposed to prove it. A coordinate
+has a version, and a version is not something a build can be stale against.
 
 ## Licence
 
