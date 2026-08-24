@@ -13,6 +13,9 @@
 package {
   name    = "syslui-android"
   version = "0.1.0"
+
+  // Imports became transitive in 0.0.73, which is what lets the block below name one coordinate.
+  sysl = "0.0.73"
 }
 
 // **One dependency, and the same one a desktop program would name.** `15 §8` says a link directive
@@ -25,11 +28,10 @@ package {
 // a prebuilt `.so` in a package is the other half of it: SDL's AAR is 16 MB of binaries built
 // against an NDK and an API level somebody else chose, and a package hashing that into `sysl.sum`
 // would be shipping a build nobody in this org could reproduce.
-// **Two coordinates and no `--lib`**: both repositories are public, so this builds from a fresh
-// clone with nothing sitting beside it -- and neither SDL3 nor PlutoVG is named here, because this
-// program does not reach either of them. The driver does.
+// **One coordinate and no `--lib`.** Imports are transitive as of sysl 0.0.73, so naming the driver
+// reaches syslUI through it — and this program never names SDL3 or PlutoVG at all, because the
+// driver is what touches them.
 dependencies {
-  syslui     { git = "github.com/sysl-lang/syslui",     version = "0.1.0" }
   syslui-sdl { git = "github.com/sysl-lang/syslui-sdl", version = "0.1.0" }
 }
 

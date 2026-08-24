@@ -35,8 +35,9 @@ Both fixes are in `sysl-lang/syslui`, and neither could have been found by a tes
 
 You need Android Studio's SDK with the **NDK** and **CMake** installed (SDK Manager → SDK Tools), a
 **JDK between 17 and 25**, and `ANDROID_HOME` set. Nothing has to sit beside this repository: the
-toolkit and its driver are public packages named in `syslui-android/package.hocon`, and
-`sysl build-c` fetches them.
+driver is a public package named in `syslui-android/package.hocon`, and `sysl build-c` fetches it —
+along with syslUI, SDL3 and PlutoVG, which it brings with it because imports are transitive as of
+sysl 0.0.73.
 
 ```
 export ANDROID_HOME=~/Library/Android/sdk
@@ -46,8 +47,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n sh.sysl.syslui/.MainActivity
 ```
 
-**It needs a sysl newer than 0.0.61**, which is the first that knows `aarch64-android`, and plutovg
-`0.2.1` or newer, which is the first with a texture paint. `sysl targets` lists what a compiler has.
+**It needs sysl 0.0.73 or newer** — 0.0.61 was the first that knew `aarch64-android`, and 0.0.73 is
+the first with transitive imports, which is what lets the manifest name one coordinate. `sysl targets` lists what a compiler has.
 
 An emulator works and an arm64 one is required: sysl has one Android target. On an Apple Silicon
 machine the ordinary system images are arm64 already.
