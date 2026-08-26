@@ -32,7 +32,7 @@ package {
 // reaches syslUI through it — and this program never names SDL3 or PlutoVG at all, because the
 // driver is what touches them.
 dependencies {
-  syslui-sdl { git = "github.com/sysl-lang/syslui-sdl", version = "0.1.0" }
+  syslui-sdl { git = "github.com/sysl-lang/syslui-sdl", version = "0.1.1" }
 }
 
 // `heap` and `posix` are what `sh.sysl.sdl3` itself requires, and a program reaching a gated module
