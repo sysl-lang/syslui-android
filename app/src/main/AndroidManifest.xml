@@ -45,11 +45,17 @@
         android:theme="@style/AppTheme">
 
         <!--
-            `MainActivity` rather than `SDLActivity`: the launcher activity has to be a class in this
-            application's own package, which is the only reason MainActivity.kt exists.
+            **Skitter's activity, named in full, and it is not in this application's package.** A
+            launcher activity does not have to be — `android:name` takes any class on the classpath,
+            and the shorthand `.MainActivity` is only a spelling relative to the package. Naming
+            Skitter's directly is what lets `applicationId` above be any string you like: the JNI
+            symbol that reports the system bars is mangled from *this* class's package, so fixing the
+            class fixes the symbol, and the sysl side of the bridge can live in a library.
+
+            Leave this line alone. Your application's name is in `gradle.properties`.
         -->
         <activity
-            android:name=".MainActivity"
+            android:name="sh.sysl.skitter.SkitterActivity"
             android:label="@string/app_name"
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"

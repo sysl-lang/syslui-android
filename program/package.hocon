@@ -1,0 +1,46 @@
+// syslui-android — a program, not a package.
+//
+// Nothing imports this. It is one application: the interface, and the two names in
+// `gradle.properties` that say what Android calls it. Everything that used to sit beside it — the
+// manifest, the Gradle build, the activity SDL needs on the Java side, and the CMake that links what
+// sysl compiles into the `.so` Android loads — is `sysl-lang/skitter`'s now, and is the same in every
+// Skitter project.
+//
+// **The reason the Java half cannot be a sysl package is `classes.jar`.** SDL's Android support is
+// half C and half Java, and the Java half has to go through `aapt2` and `d8` to become an APK. A
+// sysl package has no way to carry that and no business trying to. What Skitter *can* carry is the
+// sysl side of the bridge, because the JNI symbol stopped varying once the activity's class was
+// fixed at `sh.sysl.skitter.SkitterActivity`.
+
+package {
+  name    = "syslui-android"
+  version = "0.1.0"
+
+  // syslUI's own floor, and the highest of the three: Skitter asks 0.0.73 for transitive imports and
+  // syslui-sdl inherits this one from the toolkit.
+  sysl = "0.0.82"
+}
+
+// **Two coordinates, and neither of them is SDL3.** Imports are transitive as of sysl 0.0.73, so
+// Skitter reaches SDL3 and the driver reaches syslUI and PlutoVG; this program names only the two
+// things it imports from directly.
+//
+// That is also why there is no `sdl3-android` package and never will be. `15 §8` says a link
+// directive names a library and never a path, so nothing about `sh.sysl.sdl3` changes between a Mac
+// and a phone — what changes is *where the library is*, which is a fact about the machine being
+// built on, and `CMakeLists.txt` answers it out of the AAR that `fetch-sdl3.sh` downloads. A package
+// hashing SDL's 16 MB AAR into `sysl.sum` would be shipping a build nobody in this org could
+// reproduce.
+dependencies {
+  skitter    { git = "github.com/sysl-lang/skitter",    version = "0.1.0" }
+  syslui-sdl { git = "github.com/sysl-lang/syslui-sdl", version = "0.1.1" }
+}
+
+// `heap` and `posix` are what the chain below this requires, and a program reaching a gated module
+// has to say so too. Android answers both: Bionic is POSIX — `Os.Android` is in the compiler's POSIX
+// set, and the standard library's `__posix__` directories cover it with nothing written for Android
+// specifically.
+requires {
+  heap  = true
+  posix = true
+}

@@ -21,3 +21,8 @@ local.properties
 # The IDE's own state.
 .idea/
 *.iml
+
+# What `sysl build-c` writes beside your program: the archive CMake links, and the C header that
+# describes what it exports. Both are build output that happens to land in a source directory.
+program/*.a
+program/*.a.h

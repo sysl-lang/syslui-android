@@ -1,19 +1,24 @@
 // syslUI on Android: a form, a keyboard, and a phone's own scale.
 //
-// **Two exports and a screen, and that is the whole program.** The window, the frame loop, the event
+// **One export and a screen, and that is the whole program.** The window, the frame loop, the event
 // pump, the density, the texture upload and the system font are `sh.sysl.ui_sdl`'s -- the same
 // driver the desktop demo runs, because the measurement said seventeen lines of a hundred and twenty
-// were genuinely about being on a phone. What is left here is the two things that cannot be in a
-// library and the interface itself.
+// were genuinely about being on a phone. The system bars, the orientation pair and the Java-side
+// activity are `sh.sysl.skitter`'s. What is left here is the interface.
 //
 // **`SDL_main` rather than `main`.** Android has no `main`: `SDLActivity` loads `libmain.so` and
 // looks up the symbol `SDL_main` in it, so what an Android program needs is an entry point the Java
 // half can find rather than one that runs first. `@export` publishes exactly that, which is why
 // there is no C in this repository at all.
 //
-// **And the JNI method that reports the system bars**, whose symbol is mangled from *this*
-// application's package name and so could never live in a library.
+// **It used to be two exports, and the second one is the whole reason Skitter exists.** The JNI
+// method that reports the system bars had its symbol mangled from *this* application's package name,
+// so it could not live in a library and was written out by hand here — kept in step with a Scala
+// class that had to be renamed to match. Skitter fixes the activity at
+// `sh.sysl.skitter.SkitterActivity`, which fixes the symbol, which lets the bridge be a library's.
+// This program now reads the bars rather than receiving them.
 
+import sh.sysl.skitter.insets
 import sh.sysl.ui.*
 import sh.sysl.ui_sdl.{app, run, set_insets}
 import sysl.seq.{Sequence, generate}
@@ -31,19 +36,6 @@ const ROWS: int = 120
 // wrong box rather than like a missing argument.
 const NAME_FIELD: int = 1
 const NOTES_FIELD: int = 2
-
-// **A JNI entry point, defined in sysl.** JNI resolves an `external fun` by mangling its package and
-// class into `Java_<package>_<Class>_<method>`, so this string is what `MainActivity`'s
-// `nativeSetSystemBars` binds to -- and why it belongs to the application rather than to the driver.
-// (`self` is a reserved word, hence `instance`.)
-//
-// **What it reports is the window minus the *system bars* and nothing else.** SDL's own
-// `safe_area()` is built from five inset types at once because it answers *where can a button go*,
-// which on a gesture-navigation phone is 78 pixels off each side -- too conservative for a drawing,
-// where nothing is touchable and the sides are perfectly visible.
-@export("Java_sh_sysl_syslui_MainActivity_nativeSetSystemBars")
-set_system_bars(env: *u8, instance: *u8, l: i32, t: i32, r: i32, b: i32) =
-    set_insets(int(l), int(t), int(r), int(b))
 
 // ## The application
 //
@@ -132,8 +124,30 @@ screen(m: &Model, rows: [][]string) -> &View
     body.padding(10).restyle(_ -> look)
 end screen
 
-// What the window is cleared to, which is the application's colour rather than the toolkit's.
-window_ground(m: &Model) -> u32 = if m.daylight.read() then 0xF7F8FA else 0x12141C
+// What the window is cleared to, which is the application's colour rather than the toolkit's — and,
+// for the moment, where Skitter's bars are handed to the driver.
+//
+// **The forwarding is here because this is the only thing the driver calls every frame.** Skitter's
+// bars are *pulled* rather than pushed: `sysl build-c` refuses an `@export` that reaches module
+// storage an initializer would have to fill, so the bridge writes four bare `int`s and somebody has
+// to read them. `sh.sysl.ui_sdl` rebuilds the tree only when a signal has been written, and a phone
+// being turned writes none — so forwarding from the tree would leave the insets a rotation stale.
+// The ground colour is asked for unconditionally, once a frame, which is the property that is
+// actually needed.
+//
+// **This is a seam that wants fixing in the driver rather than a shape to copy.** `sh.sysl.ui_sdl`
+// keeps inset storage and an orientation pair of its own, both of which Skitter now owns; a driver
+// that depended on Skitter and pulled the bars itself would delete this function's second job, its
+// own four `var`s, and the duplicated `SDL_ORIENTATIONS` hint together. That is a change to
+// `sysl-lang/syslui-sdl` with its own gate and its own tag, so it is filed rather than smuggled in
+// here.
+window_ground(m: &Model) -> u32
+    val ins = insets()
+
+    set_insets(ins.left, ins.top, ins.right, ins.bottom)
+
+    if m.daylight.read() then 0xF7F8FA else 0x12141C
+end window_ground
 
 @export("SDL_main")
 sdl_main(argc: i32, argv: **u8) -> i32

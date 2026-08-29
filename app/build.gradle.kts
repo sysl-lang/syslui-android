@@ -4,6 +4,13 @@ plugins {
     id("com.android.application")
 }
 
+// **Your two names, read from `gradle.properties` rather than written here.** That is the whole
+// point of the arrangement: this file, `CMakeLists.txt`, the manifest and the activity are Skitter's
+// machinery and are meant to be left alone, so nothing in any of them says what your application is
+// called. If you find yourself editing a name in this file, the name you wanted is one file up.
+val applicationIdProp = providers.gradleProperty("skitter.applicationId").get()
+val appNameProp = providers.gradleProperty("skitter.appName").get()
+
 // **The release signing key, which is deliberately not in this repository.** It is read from
 // `~/.android/sysl-signing.properties` — keystore path, password and alias — and where that file is
 // absent the release build is simply unsigned, so a fresh clone still builds without it. A key
@@ -19,18 +26,26 @@ val signingProps = Properties().apply {
 }
 
 android {
-    namespace = "sh.sysl.syslui"
+    // **The namespace is the R class's package and has nothing to do with the activity**, which
+    // lives in `sh.sysl.skitter` and stays there. Before Skitter these two had to agree with the
+    // activity's package, the JNI symbol and the manifest, and keeping four things in step by hand
+    // is what put the string `bouncing` into a repository that had nothing to do with bouncing.
+    namespace = applicationIdProp
     compileSdk = 36
 
     // **Pinned, and pinned to the stable one.** AGP downloads whatever it defaults to if this is
-    // absent, so leaving it out means the toolchain changes under you when AGP does. It also has to
-    // be a version this machine will actually keep: `~/Library/Android/sdk/ndk/` here also holds an
-    // `r30` beta, and `CMakeLists.txt` hands *this* NDK to `sysl build-c` precisely so the two halves
-    // of the build cannot end up on different ones.
+    // absent, so leaving it out means the toolchain changes under you when AGP does. `CMakeLists.txt`
+    // hands *this* NDK to `sysl build-c` precisely so the two halves of the build cannot end up on
+    // different ones — a machine normally has two, because AGP downloads its own.
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "sh.sysl.syslui"
+        applicationId = applicationIdProp
+
+        // **The label, defined here rather than in a `strings.xml`.** A resource file would be a
+        // second place your application's name lives, and the manifest reads `@string/app_name`
+        // either way — so the string is generated from the property and there is no file to forget.
+        resValue("string", "app_name", appNameProp)
 
         // **26, and the number is the Scala standard library's rather than SDL's or sysl's.**
         // `scala-library` uses class-file features `d8` will only desugar from 26 up — *"Increase the
@@ -46,6 +61,9 @@ android {
         // was compiled against.
         minSdk = 26
         targetSdk = 36
+
+        // Yours to bump when you ship. `versionCode` is what Android compares between installs and
+        // must only ever go up; `versionName` is shown to a person and can say anything.
         versionCode = 1
         versionName = "0.1.0"
 
@@ -75,6 +93,11 @@ android {
     buildFeatures {
         // What unpacks the SDL3 AAR into the prefab layout that `find_package(SDL3 CONFIG)` reads.
         prefab = true
+
+        // **Off by default since AGP 9, and the failure is at configuration time rather than at the
+        // resource.** Without it the `resValue` above is refused with *"defaultConfig contains custom
+        // resource values, but the feature is disabled"* — which names the symptom and not this line.
+        resValues = true
     }
 
     signingConfigs {
@@ -98,7 +121,7 @@ android {
             // reachability, and two things here are reached by neither: the activity is named in the
             // manifest as a string, and `nativeSetSystemBars` is called *from native code* through
             // JNI. Both need keep rules, and getting one wrong produces an app that installs and
-            // dies at the first inset. The APK is a few megabytes larger and the demo runs.
+            // dies at the first inset.
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -108,7 +131,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
 
     lint {
         abortOnError = false
@@ -124,21 +146,23 @@ android {
 //
 // `./gradlew assembleDebug` is still the one command: this task runs sbt, and the jar it writes is
 // on the application's classpath below.
+//
+// **Nothing here is named for your application**, which is what lets the jar's path be a constant.
 val activityDir = rootProject.file("activity")
-val activityJar = activityDir.resolve("target/syslui-android-activity.jar")
+val activityJar = activityDir.resolve("target/skitter-activity.jar")
 
 val compileActivity = tasks.register<Exec>("compileActivity") {
-    description = "Compiles the Scala activity with sbt, since AGP cannot."
+    description = "Compiles Skitter's activity with sbt, since AGP cannot."
     workingDir = activityDir
 
     // Both jars are handed over rather than looked for on sbt's side. SDL's `classes.jar` lives
     // *inside* the AAR, so it has to be unzipped by somebody, and this is where the AAR's path is
     // already known.
     doFirst {
-        // **Every AAR, not the first one.** `firstOrNull()` was fine while there was one; with
-        // SDL3_ttf beside SDL3 it picked whichever the filesystem listed first, and handing sbt
-        // SDL3_ttf's `classes.jar` left `SDLActivity` off the classpath — which Scala reports as a
-        // *cyclic reference* on the `extends` clause, not as a missing type.
+        // **Every AAR, not the first one.** `firstOrNull()` is fine while there is one; with a
+        // second beside it — SDL3_ttf, say — it picks whichever the filesystem lists first, and
+        // handing sbt the wrong `classes.jar` leaves `SDLActivity` off the classpath. Scala reports
+        // that as a *cyclic reference* on the `extends` clause rather than as a missing type.
         val aars = file("libs").listFiles { f -> f.name.endsWith(".aar") }?.sorted().orEmpty()
 
         if (aars.isEmpty()) throw GradleException("no AAR in app/libs — run ./fetch-sdl3.sh")
@@ -168,7 +192,7 @@ val compileActivity = tasks.register<Exec>("compileActivity") {
             ?: throw GradleException("no android.jar under $sdk/platforms")
 
         environment(
-            "ANDROIDKIT_CLASSPATH",
+            "SKITTER_CLASSPATH",
             (listOf(androidJar) + jars).joinToString(File.pathSeparator),
         )
     }
@@ -179,7 +203,7 @@ val compileActivity = tasks.register<Exec>("compileActivity") {
     // predict, since a version bump would otherwise silently stop matching.
     doLast {
         val built = activityDir.resolve("target").walkTopDown()
-            .firstOrNull { it.name.endsWith(".jar") && it.name.startsWith("syslui-android-activity") }
+            .firstOrNull { it.name.endsWith(".jar") && it.name.startsWith("skitter-activity") }
             ?: throw GradleException("sbt produced no jar in activity/target")
 
         if (built != activityJar) built.copyTo(activityJar, overwrite = true)
@@ -202,16 +226,13 @@ dependencies {
     implementation(files(activityJar) { builtBy(compileActivity) })
 
     // **The Scala standard library, so the activity can use the language and not only its syntax.**
-    // Nothing in the file below needs it today — an empty subclass and a listener reference nothing
-    // from it — but an activity that grows real code will, and finding that out at the first `List`
-    // is a worse time to find it out. R8 shrinks whatever is unreached in a release build, and
-    // `minSdk 24` has native multidex, so the 64k method limit is not a consideration either.
+    // Skitter's own activity needs nothing from it, but an application that grows real Java-side code
+    // will, and finding that out at the first `List` is a worse time to find it out.
     implementation("org.scala-lang:scala3-library_3:3.8.2")
 
     // **The AAR is not in this repository** — `./fetch-sdl3.sh` downloads it, and `.gitignore` keeps
     // it out. It is 16 MB of binaries built against an NDK and an API level somebody else chose, and
     // the org's rule against carrying a prebuilt `.so` in a package is the same argument one level
-    // up: what is committed here should be readable, and a `.so` is not. picokit makes the same
-    // choice about its 81 MB pico-sdk clone.
+    // up: what is committed here should be readable, and a `.so` is not.
     implementation(fileTree("libs") { include("*.aar") })
 }
