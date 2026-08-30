@@ -16,11 +16,11 @@
 // so it could not live in a library and was written out by hand here — kept in step with a Scala
 // class that had to be renamed to match. Skitter fixes the activity at
 // `sh.sysl.skitter.SkitterActivity`, which fixes the symbol, which lets the bridge be a library's.
-// This program now reads the bars rather than receiving them.
+// This program neither receives the bars nor reads them: syslui-sdl 0.2.0 pulls them from Skitter
+// itself, at the one point in the frame they are used.
 
-import sh.sysl.skitter.insets
 import sh.sysl.ui.*
-import sh.sysl.ui_sdl.{app, run, set_insets}
+import sh.sysl.ui_sdl.{app, run}
 import sysl.seq.{Sequence, generate}
 
 // What the window is asked for. On Android this decides only which way up the activity starts: SDL
@@ -124,30 +124,15 @@ screen(m: &Model, rows: [][]string) -> &View
     body.padding(10).restyle(_ -> look)
 end screen
 
-// What the window is cleared to, which is the application's colour rather than the toolkit's — and,
-// for the moment, where Skitter's bars are handed to the driver.
+// What the window is cleared to, which is the application's colour rather than the toolkit's — and
+// that is now the whole of what it does.
 //
-// **The forwarding is here because this is the only thing the driver calls every frame.** Skitter's
-// bars are *pulled* rather than pushed: `sysl build-c` refuses an `@export` that reaches module
-// storage an initializer would have to fill, so the bridge writes four bare `int`s and somebody has
-// to read them. `sh.sysl.ui_sdl` rebuilds the tree only when a signal has been written, and a phone
-// being turned writes none — so forwarding from the tree would leave the insets a rotation stale.
-// The ground colour is asked for unconditionally, once a frame, which is the property that is
-// actually needed.
-//
-// **This is a seam that wants fixing in the driver rather than a shape to copy.** `sh.sysl.ui_sdl`
-// keeps inset storage and an orientation pair of its own, both of which Skitter now owns; a driver
-// that depended on Skitter and pulled the bars itself would delete this function's second job, its
-// own four `var`s, and the duplicated `SDL_ORIENTATIONS` hint together. That is a change to
-// `sysl-lang/syslui-sdl` with its own gate and its own tag, so it is filed rather than smuggled in
-// here.
-window_ground(m: &Model) -> u32
-    val ins = insets()
-
-    set_insets(ins.left, ins.top, ins.right, ins.bottom)
-
-    if m.daylight.read() then 0xF7F8FA else 0x12141C
-end window_ground
+// **It briefly had a second job and syslui-sdl 0.2.0 took it away.** Skitter's bars are *pulled*
+// rather than pushed, so somebody has to read them, and the driver rebuilds its tree only when a
+// signal is written — which turning a phone does not do. That left the ground colour, asked for once
+// a frame unconditionally, as the only place a rotation could be noticed from here. The driver reads
+// them itself now, at the one point they are used, and an application forwards nothing.
+window_ground(m: &Model) -> u32 = if m.daylight.read() then 0xF7F8FA else 0x12141C
 
 @export("SDL_main")
 sdl_main(argc: i32, argv: **u8) -> i32

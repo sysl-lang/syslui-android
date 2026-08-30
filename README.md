@@ -76,7 +76,8 @@ method's symbol from the *class's* package, so while the activity had to be rena
 application's package, the sysl half of the bridge had to be written out by hand to match — four
 spellings of one name kept in step by a person. Skitter fixes the activity at
 `sh.sysl.skitter.SkitterActivity`, which fixes the symbol, which is what lets the bridge be a
-library's. This program reads the bars now instead of receiving them.
+library's — and syslui-sdl 0.2.0 then moved the *reading* into the driver too, so this program
+neither receives the bars nor asks for them.
 
 ## The three things a phone does differently
 
@@ -98,15 +99,16 @@ of them would have to be told it was wrong on every device that disagreed.
   types at once because it answers *where can a button go*, which on a gesture-navigation phone is 78
   pixels off each side. So `SkitterActivity` reads `WindowInsets.Type.systemBars()` and calls a
   native method **defined in sysl** — Skitter's `insets.sysl` — and the interface is laid out in what
-  is left. This program pulls the four numbers with `insets()` and hands them to the driver.
+  is left. The driver reads those four numbers once a frame; nothing here touches them.
 
-  **The pull is a seam that still wants closing, and it is one line in the wrong place.** Skitter's
-  bars cannot be pushed: `sysl build-c` refuses an `@export` reaching module storage an initializer
-  would have to fill, so the bridge writes four bare `int`s and somebody must read them. The driver
-  rebuilds its tree only when a signal is written and a rotation writes none, so the read has to
-  happen somewhere unconditional — which today is `window_ground`, the function that answers the
-  clear colour. A driver that depended on Skitter and pulled the bars itself would delete that
-  second job, its own four inset `var`s and its duplicated `SDL_ORIENTATIONS` hint together.
+  **That seam is closed as of syslui-sdl 0.2.0**, and it is worth knowing what it was because the
+  shape recurs. Skitter's bars cannot be *pushed*: `sysl build-c` refuses an `@export` reaching
+  module storage an initializer would have to fill, so the bridge writes four bare `int`s and
+  somebody must read them. The driver rebuilds its tree only when a signal is written and a rotation
+  writes none — so the read had to happen somewhere unconditional, which for one release was
+  `window_ground`, the function that answers the clear colour. Putting the pull in the driver
+  removed that second job along with the driver's own four inset `var`s and its duplicated
+  `SDL_ORIENTATIONS` hint. **This program forwards nothing.**
 
 - **The keyboard is something you ask for.** `window.start_text_input()` raises it and
   `stop_text_input()` puts it away, and what decides is `c.focus()`: the id of whichever field has
