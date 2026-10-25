@@ -35,7 +35,7 @@ Both fixes are in `sysl-lang/syslui`, and neither could have been found by a tes
 
 You need Android Studio's SDK with the **NDK** and **CMake** installed (SDK Manager → SDK Tools), a
 **JDK between 17 and 25**, and `ANDROID_HOME` set. Nothing has to sit beside this repository:
-Skitter and the driver are public packages named in `program/package.hocon`, and `sysl build-c`
+Skitter and the driver are public packages named in `program/sysl.hocon`, and `sysl build-c`
 fetches them — along with syslUI, SDL3 and PlutoVG, which they bring with them because imports are
 transitive as of sysl 0.0.73.
 
@@ -129,7 +129,7 @@ build-c` compiles the program to an archive and CMake links it into the `libmain
 | file | what it does |
 |---|---|
 | `program/main.sysl` | the whole program — one export and the screen |
-| `program/package.hocon` | two coordinates: Skitter and the driver |
+| `program/sysl.hocon` | two coordinates: Skitter and the driver |
 | `gradle.properties` | **the only two lines naming this application**, per Skitter's arrangement |
 | `app/src/main/cpp/CMakeLists.txt` | runs `sysl build-c`, links the archive into `libmain.so` |
 | `activity/src/main/scala/sh/sysl/skitter/SkitterActivity.scala` | Skitter's `SDLActivity` subclass in **Scala**, which reads the insets |
