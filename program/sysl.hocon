@@ -16,7 +16,7 @@ package {
   name    = "syslui-android"
   version = "0.1.0"
 
-  sysl = "0.9.0"
+  sysl = "0.10.0"
 }
 
 // **Two coordinates, and neither of them is SDL3.** Imports are transitive as of sysl 0.0.73, so
@@ -30,8 +30,8 @@ package {
 // hashing SDL's 16 MB AAR into `sysl.sum` would be shipping a build nobody in this org could
 // reproduce.
 dependencies {
-  skitter    { git = "github.com/sysl-lang/skitter",    version = "0.3.6" }
-  syslui-sdl { git = "github.com/sysl-lang/syslui-sdl", version = "0.2.23" }
+  skitter    { git = "github.com/sysl-lang/skitter",    version = "0.3.7" }
+  syslui-sdl { git = "github.com/sysl-lang/syslui-sdl", version = "0.2.25" }
 }
 
 // `heap` and `posix` are what the chain below this requires, and a program reaching a gated module
