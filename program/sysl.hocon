@@ -30,8 +30,8 @@ package {
 // hashing SDL's 16 MB AAR into `sysl.sum` would be shipping a build nobody in this org could
 // reproduce.
 dependencies {
-  skitter    { git = "github.com/sysl-lang/skitter",    version = "0.3.7" }
-  syslui-sdl { git = "github.com/sysl-lang/syslui-sdl", version = "0.2.25" }
+  skitter    { git = "github.com/sysl-lang/skitter",    version = "0.3.8" }
+  syslui-sdl { git = "github.com/sysl-lang/syslui-sdl", version = "0.2.30" }
 }
 
 // `heap` and `posix` are what the chain below this requires, and a program reaching a gated module
